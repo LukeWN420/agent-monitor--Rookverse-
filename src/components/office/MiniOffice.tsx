@@ -6,7 +6,7 @@
 
 import Link from 'next/link';
 import type { AgentConfig, AgentDashboardState, OwnerConfig, ThemeName } from '@/lib/types';
-import { useOffice } from '@/hooks/useOffice';
+import { useSharedOffice } from '@/lib/AgentsProvider';
 import OfficeCanvasInner from './OfficeCanvas';
 
 interface MiniOfficeProps {
@@ -17,7 +17,7 @@ interface MiniOfficeProps {
 }
 
 export default function MiniOffice({ agents, agentStates, ownerConfig, theme }: MiniOfficeProps) {
-  const { officeState, tick } = useOffice(agents, agentStates);
+  const { officeState, tick } = useSharedOffice();
 
   return (
     <div>

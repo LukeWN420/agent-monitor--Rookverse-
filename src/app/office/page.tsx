@@ -1,8 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useSharedAgents } from '@/lib/AgentsProvider';
-import { useOffice } from "@/hooks/useOffice";
+import { useSharedAgents, useSharedOffice } from '@/lib/AgentsProvider';
 import OfficeCanvasInner from "@/components/office/OfficeCanvas";
 import OfficeControls from "@/components/office/OfficeControls";
 import ChatWindow from "@/components/chat/ChatWindow";
@@ -23,7 +22,7 @@ export default function OfficePage() {
     loadChatHistory,
   } = useSharedAgents();
 
-  const { officeState, tick } = useOffice(agents, agentStates);
+  const { officeState, tick } = useSharedOffice();
 
   const [ownerConfig] = useState(() => {
     if (typeof window !== 'undefined') {
