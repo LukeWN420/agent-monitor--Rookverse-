@@ -222,8 +222,42 @@ export interface AgentRuntime {
   direction: Direction;
   anim: CharacterAnim;
   path: GridPos[];
+  /**
+   * Truthy whenever the agent is mid-transition: walking along a path or
+   * playing the brief arrival pose at the destination. Mirrors the union
+   * `{walking}|{arriving}|{settled}` but kept as a boolean for back-compat
+   * with consumers that just check truthiness.
+   */
   transitioning: boolean;
   deskZone: ZoneId;
+  /**
+   * Step counter incremented on every actual move along `path`. Used so
+   * walk-frame alternation tracks real motion instead of ticking on a
+   * fixed 16-tick clock (which desyncs once movement speed varies).
+   */
+  stepsTaken?: number;
+  /**
+   * Direction we were facing on the previous tick. When `direction` is
+   * about to change, the agent holds `stand` for one tick before the
+   * next step so 90° snaps are softer.
+   */
+  prevDirection?: Direction;
+  /**
+   * Set when the agent reaches its destination. While > 0 the agent is
+   * in the arrival phase: position is locked, the arrival anim plays,
+   * pathfinding does NOT re-fire. Counted down each tick.
+   */
+  arrivalFramesLeft?: number;
+  /** The animation to render during the arrival phase. */
+  arrivalAnim?: CharacterAnim;
+  /**
+   * Tick after which the next "look around" idle break can start, and
+   * the tick on which the current look-around ends. When `tick <
+   * lookingAroundUntil` the agent overrides its idle anim with
+   * `sit_idle`, regardless of `BEHAVIOR_MAP`.
+   */
+  nextLookAroundTick?: number;
+  lookingAroundUntil?: number;
 }
 
 export interface OwnerRuntime {

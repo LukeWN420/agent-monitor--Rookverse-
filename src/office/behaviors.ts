@@ -153,3 +153,45 @@ export function resolveZone(behavior: AgentBehavior, deskZone: ZoneId): ZoneId {
   const mapping = BEHAVIOR_MAP[behavior];
   return mapping.zone === '_own_desk' ? deskZone : mapping.zone;
 }
+
+/**
+ * Tick interval between successive walk steps for a given behavior.
+ *
+ * Returned values map to "every N ticks the agent advances one tile":
+ * - 3  → frantic (panicking, dead — the ghosts of agents past)
+ * - 4  → fast walk (deploying — urgent)
+ * - 8  → calm default — preserves the recently-tuned office pace
+ * - 10 → stroll (idle, coffee — no rush, taking it in)
+ *
+ * Callers should NOT hard-code these constants; if pacing needs tuning,
+ * change them here so the entire office stays consistent.
+ */
+export function tickIntervalForBehavior(behavior: AgentBehavior): number {
+  switch (behavior) {
+    case 'panicking':
+    case 'dead':
+      return 3;
+    case 'deploying':
+      return 4;
+    case 'idle':
+    case 'coffee':
+      return 10;
+    default:
+      return 8;
+  }
+}
+
+/**
+ * The animation an agent strikes the moment it arrives at a zone, before
+ * the regular behavior animation takes over. Most behaviors already have
+ * a visually distinct rest pose (`sit_typing`, `drink_coffee`, ...) so
+ * the arrival anim doubles as the steady-state for ~30 ticks while the
+ * agent settles. `deploying` keeps `run` because it's a continuous
+ * action, not a destination.
+ */
+export function arrivalAnimFor(behavior: AgentBehavior): CharacterAnim {
+  return BEHAVIOR_MAP[behavior].anim;
+}
+
+/** How many ticks an agent stays in the arrival pose before resuming idle. */
+export const ARRIVAL_FRAMES = 30;
