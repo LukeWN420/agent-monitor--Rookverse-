@@ -12,10 +12,11 @@ interface ConnectionStatusProps {
 }
 
 export default function ConnectionStatus({ connected, demoMode, error, compact = false }: ConnectionStatusProps) {
-  const dotColor = connected ? '#66BB6A' : demoMode ? '#FFCA28' : '#EF5350';
+  // Connected = Rook gold (#D4A843); demo = warning yellow; disconnected = danger red.
+  const dotColor = connected ? '#D4A843' : demoMode ? '#FFCA28' : '#EF5350';
   const label = connected ? 'Connected' : demoMode ? 'Demo Mode' : 'Disconnected';
   const bgColor = connected
-    ? 'rgba(102,187,106,0.1)'
+    ? 'rgba(212,168,67,0.1)'
     : demoMode
       ? 'rgba(255,202,40,0.1)'
       : 'rgba(239,83,80,0.1)';

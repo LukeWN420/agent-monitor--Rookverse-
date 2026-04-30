@@ -4,20 +4,20 @@
    AgentMonitor — Theme System
    ============================================================================ */
 
-/* Default (Midnight) */
+/* Default (Rookverse) — Deep Indigo + Rook Gold */
 [data-theme="default"], :root {
-  --bg-primary: #0a0a0f;
+  --bg-primary: #0B1020;
   --bg-secondary: #10101a;
   --bg-card: rgba(26, 26, 46, 0.8);
   --bg-card-hover: rgba(36, 36, 56, 0.9);
   --text-primary: #e0e0e0;
   --text-secondary: #888888;
-  --accent-primary: #4FC3F7;
+  --accent-primary: #D4A843;
   --accent-success: #66BB6A;
   --accent-warning: #FFCA28;
   --accent-danger: #EF5350;
   --accent-info: #AB47BC;
-  --border: rgba(255, 255, 255, 0.1);
+  --border: rgba(212, 168, 67, 0.15);
 }
 
 /* Dark (Void) */

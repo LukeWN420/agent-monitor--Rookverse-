@@ -294,8 +294,10 @@ function sessionToAgentConfig(sess: GatewaySessionInfo, index: number): AgentCon
   return {
     id: sess.id,
     name: sess.name,
-    emoji: sess.emoji ?? (isMain ? '⚡' : AGENT_EMOJIS[index % AGENT_EMOJIS.length]),
-    color: isMain ? '#4FC3F7' : AGENT_COLORS[index % AGENT_COLORS.length],
+    // Rookverse default for the primary session: ♜ + gold. Sessions that
+    // self-identify with their own emoji/color (sess.emoji) keep theirs.
+    emoji: sess.emoji ?? (isMain ? '♜' : AGENT_EMOJIS[index % AGENT_EMOJIS.length]),
+    color: isMain ? '#D4A843' : AGENT_COLORS[index % AGENT_COLORS.length],
     avatar: isMain ? 'glasses' : AGENT_AVATARS[index % AGENT_AVATARS.length],
     model: sess.model,
     modelProvider: sess.modelProvider ?? undefined,
@@ -640,6 +642,7 @@ export function useAgents(forceDemoMode = false): UseAgentsReturn {
                 officeState: behaviorToOfficeState(behavior),
                 lastActivity: Date.now(),
                 streamType: data.agentStatus,
+                chatStatus: data.chatStatus,
                 toolName: tool.toolName,
                 toolPhase: tool.toolPhase,
                 statusSummary,
@@ -799,6 +802,7 @@ export function useAgents(forceDemoMode = false): UseAgentsReturn {
               officeState: behaviorToOfficeState(behavior),
               lastActivity: Date.now(),
               streamType: data.agentStatus,
+              chatStatus: data.chatStatus,
               toolName: tool.toolName,
               toolPhase: tool.toolPhase,
               statusSummary,

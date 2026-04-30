@@ -334,7 +334,7 @@ function renderUILayer(
   ctx.font = 'bold 14px monospace';
   ctx.fillStyle = state.dayNightPhase > 0.5 ? '#FFE0B2' : '#5D4037';
   ctx.textAlign = 'left';
-  ctx.fillText('🏢 AI Office', 16, 24);
+  ctx.fillText("♜ Rook's Office", 16, 24);
   ctx.restore();
 
   // Connection status

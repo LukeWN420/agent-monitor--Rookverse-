@@ -45,17 +45,29 @@ export type AgentState =
   | 'waiting'
   | 'arriving';
 
-/** Office zone identifiers */
-export type ZoneId =
-  | 'desk_0' | 'desk_1' | 'desk_2' | 'desk_3' | 'desk_4' | 'desk_5'
-  | 'boss_office'
-  | 'break_room'
-  | 'meeting_room'
-  | 'whiteboard'
-  | 'library'
-  | 'lounge'
-  | 'server_room'
-  | 'entrance';
+/**
+ * Office zone identifiers.
+ *
+ * Procedurally generated: special rooms keep stable string ids
+ * (`'boss_office'`, `'break_room'`, ...); per-agent desks use the
+ * convention `desk_${index}` and are allocated by `OfficeGenerator`
+ * based on team size. Use `SPECIAL_ZONE_IDS` and `isDeskZone()` from
+ * `@/office/zones` instead of switch-statements over a literal union.
+ */
+export type ZoneId = string;
+
+/** Discriminator helpers — narrow these by id pattern, not by literal. */
+export const SPECIAL_ZONE_IDS = [
+  'boss_office',
+  'break_room',
+  'meeting_room',
+  'whiteboard',
+  'library',
+  'lounge',
+  'server_room',
+  'entrance',
+] as const;
+export type SpecialZoneId = (typeof SPECIAL_ZONE_IDS)[number];
 
 /** Pixel coordinate in screen space */
 export interface ScreenPos {
@@ -132,6 +144,41 @@ export interface Zone {
   maxCol: number;
   minRow: number;
   maxRow: number;
+}
+
+/**
+ * A contextual element placed inside a zone by the office generator
+ * (coffee machine in break_room, server racks in server_room, ...).
+ * SimWorld's `ElementGenerator` analogue: the *meaningful* fixtures of a
+ * room, separate from the cosmetic `FurnitureItem` clutter.
+ */
+export type OfficeElementKind =
+  | 'coffee_machine'
+  | 'whiteboard'
+  | 'server_rack'
+  | 'bookshelf'
+  | 'sofa'
+  | 'monitor'
+  | 'desk_chair';
+
+export interface OfficeElement {
+  id: string;
+  kind: OfficeElementKind;
+  zone: ZoneId;
+  position: GridPos;
+}
+
+/** Output of `generateOffice()` — what the rest of the office reads from. */
+export interface GeneratedOffice {
+  /** Map dimensions for this generation. Specials live inside this box. */
+  cols: number;
+  rows: number;
+  /** All zones (specials + per-agent desks). */
+  zones: Record<ZoneId, Zone>;
+  /** Contextual elements per zone (coffee, whiteboards, ...). */
+  elements: OfficeElement[];
+  /** Number of desk zones allocated; equals min(teamSize, deskCap). */
+  deskCount: number;
 }
 
 /** A speech bubble */
@@ -345,6 +392,8 @@ export interface AgentDashboardState {
   lastActivity: number;
   sessionLog: string[];
   streamType?: string | null;
+  /** Last gateway chatStatus for this session: 'delta' | 'final' | 'aborted' | 'error'. */
+  chatStatus?: string | null;
   toolName?: string | null;
   toolPhase?: string | null;
   statusSummary?: string;

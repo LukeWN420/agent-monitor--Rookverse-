@@ -204,7 +204,7 @@ export default function DashboardPage() {
             {/* BOTTOM SECTION */}
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-6">
               <div className="xl:col-span-2 space-y-6">
-                <ActivityFeed events={activityFeed} />
+                <ActivityFeed events={activityFeed} agents={agents} agentStates={agentStates} />
               </div>
               <div className="space-y-6">
                 <AutoworkPanel agents={agents} config={autoworkConfig} loading={autoworkLoading} saving={autoworkSaving} running={autoworkRunning} onSaveConfig={saveAutoworkConfig} onSavePolicy={async () => {}} onRunNow={runAutoworkNow} />

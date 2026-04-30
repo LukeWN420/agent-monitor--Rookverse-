@@ -6,13 +6,26 @@
 
 import { useEffect, useMemo, useRef } from 'react';
 import DOMPurify from 'dompurify';
-import type { ActivityEvent } from '@/lib/types';
+import type { ActivityEvent, AgentConfig, AgentDashboardState } from '@/lib/types';
 import { formatRelativeTime } from '@/lib/state-mapper';
 
 interface ActivityFeedProps {
   events: ActivityEvent[];
   maxHeight?: number;
+  /**
+   * Currently-known agents on the dashboard. Used to filter out stale
+   * subagent noise — events whose agent has been removed or whose
+   * subagent has been idle for too long get dropped.
+   */
+  agents?: AgentConfig[];
+  agentStates?: Record<string, AgentDashboardState>;
 }
+
+// A subagent that hasn't done anything in this many ms is "stale" — its
+// `start` events get filtered out so the feed doesn't fill with ghosts.
+// Terminal events (`complete`, `fail`, errors, messages) still pass through
+// so the operator sees how a stuck task ended.
+const STALE_SUBAGENT_THRESHOLD_MS = 60_000;
 
 interface RenderedEvent {
   event: ActivityEvent;
@@ -119,7 +132,12 @@ function groupConsecutive(events: ActivityEvent[]): EventGroup[] {
   return groups;
 }
 
-export default function ActivityFeed({ events, maxHeight = 400 }: ActivityFeedProps) {
+export default function ActivityFeed({
+  events,
+  maxHeight = 400,
+  agents,
+  agentStates,
+}: ActivityFeedProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const isAtBottomRef = useRef(true);
 
@@ -129,7 +147,32 @@ export default function ActivityFeed({ events, maxHeight = 400 }: ActivityFeedPr
     }
   }, [events.length]);
 
-  const groups = useMemo(() => groupConsecutive(events), [events]);
+  const filteredEvents = useMemo(() => {
+    if (!agents || !agentStates) return events;
+    const agentIds = new Set(agents.map((a) => a.id));
+    const subagentIds = new Set(agents.filter((a) => a.isSubagent).map((a) => a.id));
+    const now = Date.now();
+
+    return events.filter((event) => {
+      // Drop events from agents that are no longer in the dashboard at all.
+      if (!agentIds.has(event.agentId)) return false;
+
+      // Subagents that have been quiet for a long time only get to surface
+      // their terminal events; we mute their `start`/`state_change` noise.
+      if (subagentIds.has(event.agentId)) {
+        const state = agentStates[event.agentId];
+        const lastSeen = state?.lastActivity ?? event.timestamp;
+        const stale = now - lastSeen > STALE_SUBAGENT_THRESHOLD_MS;
+        const isStartishNoise =
+          event.type === 'state_change'
+          || (event.type === 'tool_call' && (event.phase ?? 'start') === 'start');
+        if (stale && isStartishNoise) return false;
+      }
+      return true;
+    });
+  }, [events, agents, agentStates]);
+
+  const groups = useMemo(() => groupConsecutive(filteredEvents), [filteredEvents]);
 
   return (
     <div>

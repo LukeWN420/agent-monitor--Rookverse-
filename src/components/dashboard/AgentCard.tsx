@@ -172,21 +172,76 @@ export default function AgentCard({ agent, state, onChatClick, onRestart }: Agen
         </div>
       )}
 
-      {state?.toolName ? (
-        <div className="mb-2">
-          <span className="text-[10px] font-mono" style={{ color: 'var(--accent-warning)' }}>
-            {agent.emoji} {agent.name} → {state.toolName}{state.toolPhase ? ` (${state.toolPhase})` : ''}
-          </span>
-        </div>
-      ) : (
-        behavior === 'idle' && (
-          <div className="mb-2">
-            <span className="text-[10px] font-mono" style={{ color: 'var(--text-secondary)' }}>
-              Idle — standing by
-            </span>
-          </div>
-        )
-      )}
+      {/* Live status line — what is this agent actually doing right now?
+          Priority: error > tool > responding > inactive subagent > standing-by.
+          Driven by the gateway snapshot (streamType, chatStatus, toolName)
+          stored on AgentDashboardState by useAgents. */}
+      {(() => {
+        const toolName = state?.toolName;
+        const streamType = state?.streamType ?? null;
+        const chatStatus = state?.chatStatus ?? null;
+        const isErrored = streamType === 'error' || behavior === 'panicking' || behavior === 'dead';
+        const isInactiveSubagent = agent.isSubagent
+          && !toolName
+          && (behavior === 'idle' || behavior === 'sleeping' || behavior === 'napping');
+
+        if (isErrored) {
+          return (
+            <div className="mb-2">
+              <span className="text-[10px] font-mono" style={{ color: 'var(--accent-danger)' }}>
+                ❌ Error
+              </span>
+            </div>
+          );
+        }
+        if (toolName) {
+          return (
+            <div className="mb-2">
+              <span
+                className="text-[10px] font-mono inline-flex items-center gap-1 animate-pulse"
+                style={{ color: 'var(--accent-warning)' }}
+              >
+                ⚡ running {toolName}{state?.toolPhase ? ` (${state.toolPhase})` : ''}
+              </span>
+            </div>
+          );
+        }
+        if (chatStatus === 'delta') {
+          return (
+            <div className="mb-2">
+              <span className="text-[10px] font-mono" style={{ color: 'var(--accent-primary)' }}>
+                💬 responding...
+              </span>
+            </div>
+          );
+        }
+        if (isInactiveSubagent) {
+          return (
+            <div className="mb-2">
+              <span
+                className="text-[10px] font-mono opacity-60"
+                style={{ color: 'var(--text-secondary)' }}
+              >
+                💤 Inactive
+              </span>
+            </div>
+          );
+        }
+        // Standing-by only when BOTH the behavior says idle AND the chat has
+        // settled (final or no chat at all). Without the conjunction, a brief
+        // `final` event flashes "Standing by" mid-stream before behavior
+        // catches up.
+        if (behavior === 'idle' && (chatStatus == null || chatStatus === 'final')) {
+          return (
+            <div className="mb-2">
+              <span className="text-[10px] font-mono" style={{ color: 'var(--text-secondary)' }}>
+                ☕ Standing by
+              </span>
+            </div>
+          );
+        }
+        return null;
+      })()}
 
       {/* Token bar */}
       <div className="mb-2">

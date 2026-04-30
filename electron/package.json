@@ -1,0 +1,42 @@
+{
+  "name": "rookverse-desktop",
+  "version": "0.1.0",
+  "description": "Rookverse Agent Monitor — Desktop App",
+  "main": "electron/main.js",
+  "scripts": {
+    "dev": "next dev -p 3200",
+    "electron:dev": "cross-env NODE_ENV=development electron . --dev",
+    "electron:start": "electron .",
+    "electron:build": "next build && electron-builder",
+    "electron:pack": "next build && electron-builder --dir"
+  },
+  "build": {
+    "appId": "com.rookverse.agent-monitor",
+    "productName": "Rookverse",
+    "directories": {
+      "output": "dist-electron"
+    },
+    "files": [
+      "electron/**/*",
+      ".next/standalone/**",
+      ".next/static/**",
+      "public/**"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "public/rook-icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Rookverse"
+    }
+  }
+}

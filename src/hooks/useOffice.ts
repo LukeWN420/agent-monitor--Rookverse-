@@ -21,6 +21,7 @@ import { findPath, type WalkGrid } from '@/engine/pathfinding';
 import { createWalkGrid } from '@/office/layout';
 import { BEHAVIOR_MAP, resolveZone } from '@/office/behaviors';
 import { getZone, getRandomPointInZone } from '@/office/zones';
+import { generateOffice, DESK_CAP } from '@/office/generator';
 import { createParticle, tickParticles } from '@/sprites/effects';
 import { gridToScreen } from '@/engine/isometric';
 
@@ -29,12 +30,13 @@ export interface UseOfficeReturn {
   tick: () => void;
 }
 
-const DESK_ZONES: ZoneId[] = ['desk_0', 'desk_1', 'desk_2', 'desk_3', 'desk_4', 'desk_5'];
+/** Desk zone ids, generated to match the procedural office. */
+const DESK_ZONES: ZoneId[] = Array.from({ length: DESK_CAP }, (_, i) => `desk_${i}`);
 
-function createInitialAgentRuntime(id: string, index: number): AgentRuntime {
-  const deskZone = DESK_ZONES[index] ?? 'desk_0';
-  const zone = getZone(deskZone, 6);
-  const pos = zone ? zone.center : { col: 4, row: 3 + index * 3 };
+function createInitialAgentRuntime(id: string, index: number, teamSize: number): AgentRuntime {
+  const deskZone = DESK_ZONES[index % DESK_CAP];
+  const zone = getZone(deskZone, teamSize);
+  const pos = zone ? zone.center : { col: 4, row: 3 + (index % 6) * 3 };
   return {
     id,
     currentState: 'idle',
@@ -54,7 +56,7 @@ export function useOffice(
   speed: number = 1,
 ): UseOfficeReturn {
   const [officeState, setOfficeState] = useState<OfficeState>(() => ({
-    agents: agents.map((a, i) => createInitialAgentRuntime(a.id, i)),
+    agents: agents.map((a, i) => createInitialAgentRuntime(a.id, i, agents.length)),
     owner: { anim: 'sit_typing' },
     bubbles: [],
     particles: [],
@@ -79,7 +81,7 @@ export function useOffice(
       const newRuntimes = agents.map((a, i) => {
         const existing = prev.agents.find(r => r.id === a.id);
         if (existing) return existing;
-        return createInitialAgentRuntime(a.id, i);
+        return createInitialAgentRuntime(a.id, i, agents.length);
       });
       return { ...prev, agents: newRuntimes };
     });

@@ -2,15 +2,16 @@
 // Office Layout — Map dimensions, furniture placement, floor colors, walk grid
 // ============================================================================
 
-import type { FurnitureItem, Zone, ZoneId, TileType } from '@/lib/types';
-import { ZONES_TEMPLATE, buildZoneMap } from './zones';
+import type { FurnitureItem, Zone, ZoneId, TileType, GeneratedOffice } from '@/lib/types';
+import { buildZoneMap } from './zones';
+import { generateOffice, OFFICE_COLS, OFFICE_ROWS } from './generator';
 
 // ---------------------------------------------------------------------------
-// Map Dimensions
+// Map Dimensions — sourced from the generator, re-exported for callers.
 // ---------------------------------------------------------------------------
 
-export const MAP_COLS = 24;
-export const MAP_ROWS = 20;
+export const MAP_COLS = OFFICE_COLS;
+export const MAP_ROWS = OFFICE_ROWS;
 
 // ---------------------------------------------------------------------------
 // Floor color helper
@@ -48,30 +49,19 @@ export function getFloorColor(col: number, row: number): string {
 // Furniture layout builder
 // ---------------------------------------------------------------------------
 
-export function buildFurnitureLayout(agentCount: number): FurnitureItem[] {
+export function buildFurnitureLayout(agentCount: number, office?: GeneratedOffice): FurnitureItem[] {
   const items: FurnitureItem[] = [];
+  const gen = office ?? generateOffice(agentCount);
 
-  // --- Agent desks (up to 6) ---
-  const deskPositions = [
-    { col: 3, row: 3 },
-    { col: 3, row: 6 },
-    { col: 3, row: 9 },
-    { col: 7, row: 3 },
-    { col: 7, row: 6 },
-    { col: 7, row: 9 },
-  ];
-  const chairPositions = [
-    { col: 4, row: 3 },
-    { col: 4, row: 6 },
-    { col: 4, row: 9 },
-    { col: 8, row: 3 },
-    { col: 8, row: 6 },
-    { col: 8, row: 9 },
-  ];
-
-  for (let i = 0; i < Math.min(agentCount, 6); i++) {
-    items.push({ type: 'desk', ...deskPositions[i] });
-    items.push({ type: 'chair', ...chairPositions[i] });
+  // --- Per-desk furniture, derived from generated zones ---
+  // Desk furniture sits one column left of zone-center; the chair sits at
+  // zone-center. This mirrors the v0 hardcoded layout exactly for the
+  // first six desks, and scales to whatever the generator allocates.
+  for (const zoneId of Object.keys(gen.zones)) {
+    if (!zoneId.startsWith('desk_')) continue;
+    const z = gen.zones[zoneId];
+    items.push({ type: 'desk',  col: z.center.col - 1, row: z.center.row });
+    items.push({ type: 'chair', col: z.center.col,     row: z.center.row });
   }
 
   // --- Boss office ---
@@ -138,7 +128,7 @@ export function buildFurnitureLayout(agentCount: number): FurnitureItem[] {
 // Walk grid (pathfinding)
 // ---------------------------------------------------------------------------
 
-export function createWalkGrid(agentCount: number): TileType[][] {
+export function createWalkGrid(agentCount: number, office?: GeneratedOffice): TileType[][] {
   const grid: TileType[][] = [];
   for (let r = 0; r < MAP_ROWS; r++) {
     grid[r] = [];
@@ -186,7 +176,7 @@ export function createWalkGrid(agentCount: number): TileType[][] {
   }
 
   // Mark furniture tiles
-  const furniture = buildFurnitureLayout(agentCount);
+  const furniture = buildFurnitureLayout(agentCount, office);
   for (const item of furniture) {
     if (item.type !== 'carpet' && item.type !== 'door_mat') {
       if (grid[item.row]?.[item.col] === 'floor') {
