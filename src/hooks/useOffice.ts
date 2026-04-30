@@ -124,8 +124,8 @@ export function useOffice(
           const next = updated.path[0];
           const moveSpeed = Math.max(1, speed);
 
-          // Simple step towards next grid position
-          if (newTick % Math.max(1, Math.floor(4 / moveSpeed)) === 0) {
+          // Walk every 8th tick — calm, deliberate pace
+          if (newTick % 8 === 0) {
             // Update direction
             if (next.col > updated.pos.col) updated.direction = 'e';
             else if (next.col < updated.pos.col) updated.direction = 'w';
@@ -144,8 +144,8 @@ export function useOffice(
           updated.transitioning = false;
           updated.anim = mapping.anim;
 
-          // Idle fidgeting: occasionally shift position by 1 tile
-          if (newTick % 180 === (agents.indexOf(agents.find(a => a.id === runtime.id)!) * 37) % 180) {
+          // Idle fidgeting: rarely shift position by 1 tile (~every 15 seconds)
+          if (newTick % 450 === (agents.indexOf(agents.find(a => a.id === runtime.id)!) * 53) % 450) {
             const fidgetDx = Math.random() < 0.5 ? -1 : 1;
             const fidgetDy = Math.random() < 0.5 ? -1 : 1;
             const newPos = { col: updated.pos.col + fidgetDx, row: updated.pos.row + fidgetDy };
@@ -170,8 +170,8 @@ export function useOffice(
             }
           }
 
-          // Show bubble occasionally
-          if (mapping.bubble && newTick % 300 === (agents.indexOf(agents.find(a => a.id === runtime.id)!) * 50) % 300) {
+          // Show bubble occasionally (every ~30 seconds, staggered per agent)
+          if (mapping.bubble && newTick % 900 === (agents.indexOf(agents.find(a => a.id === runtime.id)!) * 73) % 900) {
             const sp = gridToScreen(updated.pos);
             newBubbles.push({
               text: mapping.bubble,
