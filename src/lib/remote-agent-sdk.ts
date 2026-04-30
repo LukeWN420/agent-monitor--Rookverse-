@@ -160,5 +160,32 @@ export class RemoteAgentSDK {
   }
 }
 
-// Export singleton instance
-export const remoteAgent = new RemoteAgentSDK(window.location.origin);
+// Export singleton instance.
+//
+// Lazy-constructed via a Proxy so this module is safe to import from server
+// components / static prerender. The SDK is only useful in the browser
+// (it talks to the dashboard's own origin), so we build the real instance
+// the first time any method is called from a client context.
+let _remoteAgent: RemoteAgentSDK | null = null;
+
+function _resolveRemoteAgent(): RemoteAgentSDK {
+  if (_remoteAgent) return _remoteAgent;
+  if (typeof window === 'undefined') {
+    throw new Error(
+      'remoteAgent accessed in a non-browser context. ' +
+      'Wrap calls in `if (typeof window !== "undefined")` or move them ' +
+      'inside a useEffect / event handler.'
+    );
+  }
+  _remoteAgent = new RemoteAgentSDK(window.location.origin);
+  return _remoteAgent;
+}
+
+export const remoteAgent: RemoteAgentSDK = new Proxy({} as RemoteAgentSDK, {
+  get(_target, prop, receiver) {
+    return Reflect.get(_resolveRemoteAgent(), prop, receiver);
+  },
+  set(_target, prop, value, receiver) {
+    return Reflect.set(_resolveRemoteAgent(), prop, value, receiver);
+  },
+});

@@ -172,12 +172,20 @@ export default function AgentCard({ agent, state, onChatClick, onRestart }: Agen
         </div>
       )}
 
-      {state?.toolName && (
+      {state?.toolName ? (
         <div className="mb-2">
           <span className="text-[10px] font-mono" style={{ color: 'var(--accent-warning)' }}>
-            Tool: {state.toolName}{state.toolPhase ? ` (${state.toolPhase})` : ''}
+            {agent.emoji} {agent.name} → {state.toolName}{state.toolPhase ? ` (${state.toolPhase})` : ''}
           </span>
         </div>
+      ) : (
+        behavior === 'idle' && (
+          <div className="mb-2">
+            <span className="text-[10px] font-mono" style={{ color: 'var(--text-secondary)' }}>
+              Idle — standing by
+            </span>
+          </div>
+        )
       )}
 
       {/* Token bar */}

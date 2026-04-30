@@ -120,6 +120,136 @@ function pushActivity(
   setActivityFeed((prev) => [event, ...prev].slice(0, MAX_ACTIVITY_EVENTS));
 }
 
+interface ToolSlot {
+  name: string;
+  startedAt: number;
+  phase: string | null;
+}
+
+interface ToolEventSnapshot {
+  toolName: string | null;
+  toolPhase: string | null;
+}
+
+/**
+ * Diff a session's previous tool state against the latest snapshot from the
+ * gateway and produce phase-aware ActivityEvent records. Mutates `slots`.
+ *
+ * Lifecycle:
+ *   prev=none, curr=X   → emit `start(X)`
+ *   prev=X,    curr=X   → no event (phase changes are silent for now)
+ *   prev=X,    curr=Y   → emit `complete(X)` + `start(Y)`
+ *   prev=X,    curr=none→ emit `complete(X)`
+ *   any active error    → emit `fail(prev)` if prev exists
+ */
+function diffToolState(
+  sessionId: string,
+  meta: { name: string; emoji: string },
+  curr: ToolEventSnapshot,
+  agentStatus: string | null,
+  statusSummary: string,
+  slots: Record<string, ToolSlot>,
+  nextEventId: () => number,
+): ActivityEvent[] {
+  const events: ActivityEvent[] = [];
+  const prev = slots[sessionId];
+  const now = Date.now();
+
+  const errored = agentStatus === 'error' && prev;
+  if (errored) {
+    events.push({
+      id: `tool-fail-${now}-${nextEventId()}-${sessionId}`,
+      agentId: sessionId,
+      agentName: meta.name,
+      agentEmoji: meta.emoji,
+      type: 'tool_call',
+      phase: 'fail',
+      toolName: prev.name,
+      toolPhase: prev.phase ?? undefined,
+      durationMs: now - prev.startedAt,
+      errorReason: statusSummary,
+      message: `${prev.name} failed: ${statusSummary}`,
+      timestamp: now,
+    });
+    delete slots[sessionId];
+    return events;
+  }
+
+  if (!prev && !curr.toolName) return events;
+
+  if (!prev && curr.toolName) {
+    events.push({
+      id: `tool-start-${now}-${nextEventId()}-${sessionId}`,
+      agentId: sessionId,
+      agentName: meta.name,
+      agentEmoji: meta.emoji,
+      type: 'tool_call',
+      phase: 'start',
+      toolName: curr.toolName,
+      toolPhase: curr.toolPhase ?? undefined,
+      message: `${curr.toolName}${curr.toolPhase ? ` (${curr.toolPhase})` : ''}`,
+      timestamp: now,
+    });
+    slots[sessionId] = { name: curr.toolName, startedAt: now, phase: curr.toolPhase };
+    return events;
+  }
+
+  if (prev && !curr.toolName) {
+    events.push({
+      id: `tool-complete-${now}-${nextEventId()}-${sessionId}`,
+      agentId: sessionId,
+      agentName: meta.name,
+      agentEmoji: meta.emoji,
+      type: 'tool_call',
+      phase: 'complete',
+      toolName: prev.name,
+      toolPhase: prev.phase ?? undefined,
+      durationMs: now - prev.startedAt,
+      message: `${prev.name} completed`,
+      timestamp: now,
+    });
+    delete slots[sessionId];
+    return events;
+  }
+
+  if (prev && curr.toolName && prev.name !== curr.toolName) {
+    events.push({
+      id: `tool-complete-${now}-${nextEventId()}-${sessionId}`,
+      agentId: sessionId,
+      agentName: meta.name,
+      agentEmoji: meta.emoji,
+      type: 'tool_call',
+      phase: 'complete',
+      toolName: prev.name,
+      toolPhase: prev.phase ?? undefined,
+      durationMs: now - prev.startedAt,
+      message: `${prev.name} completed`,
+      timestamp: now,
+    });
+    events.push({
+      id: `tool-start-${now}-${nextEventId() + 1}-${sessionId}`,
+      agentId: sessionId,
+      agentName: meta.name,
+      agentEmoji: meta.emoji,
+      type: 'tool_call',
+      phase: 'start',
+      toolName: curr.toolName,
+      toolPhase: curr.toolPhase ?? undefined,
+      message: `${curr.toolName}${curr.toolPhase ? ` (${curr.toolPhase})` : ''}`,
+      timestamp: now,
+    });
+    slots[sessionId] = { name: curr.toolName, startedAt: now, phase: curr.toolPhase };
+    return events;
+  }
+
+  // Same tool, possibly different phase — keep slot phase up to date but
+  // don't emit a new feed event.
+  if (prev && curr.toolName && prev.name === curr.toolName) {
+    slots[sessionId] = { ...prev, phase: curr.toolPhase };
+  }
+  return events;
+}
+
 function createChatMessage(input: {
   id: string;
   agentId: string;
@@ -268,6 +398,10 @@ export function useAgents(forceDemoMode = false): UseAgentsReturn {
   const demoTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const feedTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const prevBehaviorsRef = useRef<Record<string, string>>({});
+  // Per-session active-tool tracking. We need this to emit `start` /
+  // `complete` / `fail` phase events with durations: the gateway streams
+  // raw tool snapshots, not lifecycle deltas.
+  const toolStateRef = useRef<Record<string, { name: string; startedAt: number; phase: string | null }>>({});
   const eventIdRef = useRef(0);
   const keyToIdRef = useRef<Record<string, string>>({});
   const agentMetaRef = useRef<Record<string, Pick<AgentConfig, 'name' | 'emoji'>>>({});
@@ -454,7 +588,7 @@ export function useAgents(forceDemoMode = false): UseAgentsReturn {
             isSubagent: data.sessionKey.includes('subagent'),
           });
 
-          let toolEvent: ActivityEvent | null = null;
+          let toolEvents: ActivityEvent[] = [];
           let errorEvent: ActivityEvent | null = null;
           let messageEvent: ActivityEvent | null = null;
 
@@ -462,37 +596,36 @@ export function useAgents(forceDemoMode = false): UseAgentsReturn {
             const existing = prev[sessionId];
             if (!existing) return prev;
 
-            if (tool.toolName && tool.toolName !== existing.toolName) {
-              const meta = agentMetaRef.current[sessionId];
-              toolEvent = {
-                id: `tool-${Date.now()}-${++eventIdRef.current}-${sessionId}`,
-                agentId: sessionId,
-                agentName: meta?.name ?? data.agentName ?? sessionId,
-                agentEmoji: meta?.emoji ?? data.emoji ?? '🤖',
-                type: 'tool_call',
-                message: `${tool.toolName}${tool.toolPhase ? ` (${tool.toolPhase})` : ''}`,
-                timestamp: Date.now(),
-              };
-            }
+            const meta = agentMetaRef.current[sessionId] ?? {
+              name: data.agentName ?? sessionId,
+              emoji: data.emoji ?? '🤖',
+            };
+            toolEvents = diffToolState(
+              sessionId,
+              meta,
+              { toolName: tool.toolName, toolPhase: tool.toolPhase },
+              data.agentStatus ?? null,
+              statusSummary,
+              toolStateRef.current,
+              () => ++eventIdRef.current,
+            );
 
             if (data.agentStatus === 'error') {
-              const meta = agentMetaRef.current[sessionId];
               errorEvent = {
                 id: `err-${Date.now()}-${++eventIdRef.current}-${sessionId}`,
                 agentId: sessionId,
-                agentName: meta?.name ?? data.agentName ?? sessionId,
-                agentEmoji: meta?.emoji ?? data.emoji ?? '🤖',
+                agentName: meta.name,
+                agentEmoji: meta.emoji,
                 type: 'error',
                 message: statusSummary,
                 timestamp: Date.now(),
               };
             } else if (data.agentStatus === 'assistant' && data.chatStatus === 'final') {
-              const meta = agentMetaRef.current[sessionId];
               messageEvent = {
                 id: `msg-${Date.now()}-${++eventIdRef.current}-${sessionId}`,
                 agentId: sessionId,
-                agentName: meta?.name ?? data.agentName ?? sessionId,
-                agentEmoji: meta?.emoji ?? data.emoji ?? '🤖',
+                agentName: meta.name,
+                agentEmoji: meta.emoji,
                 type: 'message',
                 message: statusSummary,
                 timestamp: Date.now(),
@@ -549,7 +682,7 @@ export function useAgents(forceDemoMode = false): UseAgentsReturn {
           }
           prevBehaviorsRef.current[sessionId] = behavior;
 
-          if (toolEvent) pushActivity(setActivityFeed, toolEvent);
+          for (const ev of toolEvents) pushActivity(setActivityFeed, ev);
           if (errorEvent) pushActivity(setActivityFeed, errorEvent);
           if (messageEvent) pushActivity(setActivityFeed, messageEvent);
         } catch {
@@ -614,7 +747,7 @@ export function useAgents(forceDemoMode = false): UseAgentsReturn {
           isSubagent: data.sessionKey.includes('subagent'),
         });
 
-        let toolEvent: ActivityEvent | null = null;
+        let toolEvents: ActivityEvent[] = [];
         let errorEvent: ActivityEvent | null = null;
         let messageEvent: ActivityEvent | null = null;
 
@@ -622,37 +755,36 @@ export function useAgents(forceDemoMode = false): UseAgentsReturn {
           const existing = prev[sessionId];
           if (!existing) return prev;
 
-          if (tool.toolName && tool.toolName !== existing.toolName) {
-            const meta = agentMetaRef.current[sessionId];
-            toolEvent = {
-              id: `tool-${Date.now()}-${++eventIdRef.current}-${sessionId}`,
-              agentId: sessionId,
-              agentName: meta?.name ?? data.agentName ?? sessionId,
-              agentEmoji: meta?.emoji ?? data.emoji ?? '🤖',
-              type: 'tool_call',
-              message: `${tool.toolName}${tool.toolPhase ? ` (${tool.toolPhase})` : ''}`,
-              timestamp: Date.now(),
-            };
-          }
+          const meta = agentMetaRef.current[sessionId] ?? {
+            name: data.agentName ?? sessionId,
+            emoji: data.emoji ?? '🤖',
+          };
+          toolEvents = diffToolState(
+            sessionId,
+            meta,
+            { toolName: tool.toolName, toolPhase: tool.toolPhase },
+            data.agentStatus ?? null,
+            statusSummary,
+            toolStateRef.current,
+            () => ++eventIdRef.current,
+          );
 
           if (data.agentStatus === 'error') {
-            const meta = agentMetaRef.current[sessionId];
             errorEvent = {
               id: `err-${Date.now()}-${++eventIdRef.current}-${sessionId}`,
               agentId: sessionId,
-              agentName: meta?.name ?? data.agentName ?? sessionId,
-              agentEmoji: meta?.emoji ?? data.emoji ?? '🤖',
+              agentName: meta.name,
+              agentEmoji: meta.emoji,
               type: 'error',
               message: statusSummary,
               timestamp: Date.now(),
             };
           } else if (data.agentStatus === 'assistant' && data.chatStatus === 'final') {
-            const meta = agentMetaRef.current[sessionId];
             messageEvent = {
               id: `msg-${Date.now()}-${++eventIdRef.current}-${sessionId}`,
               agentId: sessionId,
-              agentName: meta?.name ?? data.agentName ?? sessionId,
-              agentEmoji: meta?.emoji ?? data.emoji ?? '🤖',
+              agentName: meta.name,
+              agentEmoji: meta.emoji,
               type: 'message',
               message: statusSummary,
               timestamp: Date.now(),
@@ -709,7 +841,7 @@ export function useAgents(forceDemoMode = false): UseAgentsReturn {
         }
         prevBehaviorsRef.current[sessionId] = behavior;
 
-        if (toolEvent) pushActivity(setActivityFeed, toolEvent);
+        for (const ev of toolEvents) pushActivity(setActivityFeed, ev);
         if (errorEvent) pushActivity(setActivityFeed, errorEvent);
         if (messageEvent) pushActivity(setActivityFeed, messageEvent);
       } catch {
@@ -845,7 +977,7 @@ export function useAgents(forceDemoMode = false): UseAgentsReturn {
     const meta = agentMetaRef.current[agentId];
     if (!meta) return;
 
-    const maxAttempts = 90;
+    const maxAttempts = 30;
     const thinkingId = `msg-${Date.now()}-thinking-${agentId}`;
 
     addThreadMessage(agentId, createChatMessage({
@@ -861,8 +993,8 @@ export function useAgents(forceDemoMode = false): UseAgentsReturn {
     }));
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      if (attempt % 3 !== 0) continue;
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      if (attempt % 2 !== 0) continue;
 
       try {
         const resp = await fetch('/api/gateway/action', {
@@ -1156,12 +1288,14 @@ export function useAgents(forceDemoMode = false): UseAgentsReturn {
         channel: 'global',
       }));
 
-      const deliveredKeys = new Set<string>((data.delivered ?? []).map((item: { sessionKey: string }) => item.sessionKey));
-      await Promise.all(
-        targetEntries
-          .filter((entry) => deliveredKeys.has(entry.key))
-          .map((entry) => pollForReply(entry.target.id, entry.key, 'broadcast')),
-      );
+      // Fire polling in background — don't block the broadcast return
+    const deliveredKeys = new Set<string>((data.delivered ?? []).map((item: { sessionKey: string }) => item.sessionKey));
+    for (const entry of targetEntries) {
+      if (deliveredKeys.has(entry.key)) {
+        // Don't await — let replies stream in asynchronously
+        void pollForReply(entry.target.id, entry.key, 'broadcast');
+      }
+    }
     } catch {
       addGlobalMessage(createChatMessage({
         id: `broadcast-error-${Date.now()}`,

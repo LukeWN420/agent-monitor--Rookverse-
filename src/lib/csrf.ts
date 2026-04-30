@@ -6,6 +6,7 @@
 const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS?.split(',') || [
   'http://localhost:3000',
   'http://localhost:3001',
+  'http://localhost:3200',
 ];
 
 export function validateCSRF(origin: string | null, referer: string | null): boolean {

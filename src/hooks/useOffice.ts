@@ -142,6 +142,19 @@ export function useOffice(
           updated.transitioning = false;
           updated.anim = mapping.anim;
 
+          // Idle fidgeting: occasionally shift position by 1 tile
+          if (newTick % 180 === (agents.indexOf(agents.find(a => a.id === runtime.id)!) * 37) % 180) {
+            const fidgetDx = Math.random() < 0.5 ? -1 : 1;
+            const fidgetDy = Math.random() < 0.5 ? -1 : 1;
+            const newPos = { col: updated.pos.col + fidgetDx, row: updated.pos.row + fidgetDy };
+            // Only fidget if the new position is walkable
+            const grid = walkGridRef.current;
+            if (grid[newPos.row]?.[newPos.col] === 'floor') {
+              updated.pos = newPos;
+              updated.screenPos = gridToScreen(newPos);
+            }
+          }
+
           // Spawn particles periodically
           if (mapping.particle) {
             const timerId = `${runtime.id}-particle`;

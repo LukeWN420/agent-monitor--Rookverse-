@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { AgentsProvider } from "@/lib/AgentsProvider";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -16,7 +17,9 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <body className="antialiased">
         <ErrorBoundary>
-          {children}
+          <AgentsProvider>
+            {children}
+          </AgentsProvider>
         </ErrorBoundary>
       </body>
     </html>

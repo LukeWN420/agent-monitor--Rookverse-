@@ -103,7 +103,9 @@ export default function OfficeCanvasInner({
         height: cssHeight,
         maxWidth: '100%',
         imageRendering: 'pixelated',
-        backgroundColor: '#0a0a0f',
+        // Rookverse palette: Deep Indigo background with a Gold accent ring.
+        backgroundColor: '#0B1020',
+        boxShadow: '0 0 0 1px rgba(212, 168, 67, 0.35), 0 0 24px rgba(212, 168, 67, 0.12)',
       }}
     />
   );

@@ -6,13 +6,19 @@ function generateId(): string {
 }
 
 interface RegisterRequest {
-  agentName: string;
-  agentEmoji: string;
-  agentColor: string;
-  computerName: string;
-  ipAddress: string;
+  agentName?: string;
+  agentEmoji?: string;
+  agentColor?: string;
+  computerName?: string;
+  ipAddress?: string;
   authToken?: string;
 }
+
+// Rook is the canonical default agent identity for this dashboard.
+const DEFAULT_AGENT_NAME = 'Rook';
+const DEFAULT_AGENT_EMOJI = '♜';
+const DEFAULT_AGENT_COLOR = '#D4A843';
+const DEFAULT_COMPUTER_NAME = 'LwN';
 
 interface AgentRegistration {
   id: string;
@@ -34,26 +40,20 @@ const registeredAgents = new Map<string, AgentRegistration>();
 export async function POST(request: Request) {
   try {
     const body: RegisterRequest = await request.json();
-    
-    // Validate required fields
-    if (!body.agentName || !body.computerName) {
-      return NextResponse.json(
-        { error: 'Missing required fields: agentName, computerName' },
-        { status: 400 }
-      );
-    }
-    
+
     // Generate unique ID and auth token
     const agentId = `agent-${generateId()}`;
     const authToken = generateId();
-    
-    // Create registration
+
+    // Create registration. All fields default to Rook's brand identity if
+    // the caller omits them, so a bare `POST /api/agents/register` with `{}`
+    // produces a fully-formed Rook agent.
     const registration: AgentRegistration = {
       id: agentId,
-      agentName: body.agentName,
-      agentEmoji: body.agentEmoji || '🤖',
-      agentColor: body.agentColor || '#3B82F6',
-      computerName: body.computerName,
+      agentName: body.agentName || DEFAULT_AGENT_NAME,
+      agentEmoji: body.agentEmoji || DEFAULT_AGENT_EMOJI,
+      agentColor: body.agentColor || DEFAULT_AGENT_COLOR,
+      computerName: body.computerName || DEFAULT_COMPUTER_NAME,
       ipAddress: body.ipAddress || 'unknown',
       authToken,
       registeredAt: Date.now(),
@@ -65,7 +65,7 @@ export async function POST(request: Request) {
     // Store registration
     registeredAgents.set(agentId, registration);
     
-    console.log(`[Agent Registration] New agent: ${body.agentName} from ${body.computerName}`);
+    console.log(`[Agent Registration] New agent: ${registration.agentName} from ${registration.computerName}`);
     
     return NextResponse.json({
       ok: true,

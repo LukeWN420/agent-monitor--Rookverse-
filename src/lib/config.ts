@@ -42,13 +42,13 @@ export const DEFAULT_GATEWAY: GatewayConfig = {
 };
 
 export const DEFAULT_OWNER: OwnerConfig = {
-  name: 'Boss',
+  name: 'LwN',
   emoji: '👔',
   avatar: 'boss',
 };
 
 export const DEFAULT_AGENTS: AgentConfig[] = [
-  { id: 'main', name: 'Claude', emoji: '⚡', color: '#4FC3F7', avatar: 'glasses' },
+  { id: 'main', name: 'Rook', emoji: '♜', color: '#D4A843', avatar: 'glasses' },
   { id: 'agent-2', name: 'GPT', emoji: '🔥', color: '#FF7043', avatar: 'hoodie' },
   { id: 'agent-3', name: 'Gemini', emoji: '🌟', color: '#66BB6A', avatar: 'suit' },
 ];

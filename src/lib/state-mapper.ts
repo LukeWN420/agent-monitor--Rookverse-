@@ -36,7 +36,7 @@ export const BEHAVIOR_INFO: Record<AgentBehavior, BehaviorInfo> = {
   debugging:      { label: 'Debugging',      emoji: '🐛', category: 'work',        color: '#F44336', neonColor: '#FF5252' },
   receiving_task: { label: 'Receiving Task', emoji: '📋', category: 'interaction', color: '#3F51B5', neonColor: '#536DFE' },
   reporting:      { label: 'Reporting',      emoji: '✅', category: 'interaction', color: '#8BC34A', neonColor: '#76FF03' },
-  idle:           { label: 'Idle',           emoji: '☕', category: 'life',        color: '#795548', neonColor: '#FFCA28' },
+  idle:           { label: 'Standing By',    emoji: '♜', category: 'life',        color: '#D4A843', neonColor: '#D4A843' },
   coffee:         { label: 'Coffee Break',   emoji: '☕', category: 'life',        color: '#795548', neonColor: '#A1887F' },
   snacking:       { label: 'Snacking',       emoji: '🍪', category: 'life',        color: '#FF9800', neonColor: '#FFD740' },
   toilet:         { label: 'Restroom',       emoji: '🚽', category: 'life',        color: '#607D8B', neonColor: '#90A4AE' },

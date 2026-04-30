@@ -17,7 +17,7 @@ import AchievementList from "@/components/achievements/AchievementList";
 import Leaderboard from "@/components/achievements/Leaderboard";
 import MetricsDashboard from "@/components/metrics/MetricsDashboard";
 import KeyboardShortcuts from "@/components/KeyboardShortcuts";
-import { useAgents } from "@/hooks/useAgents";
+import { useSharedAgents } from '@/lib/AgentsProvider';
 import { initialAchievementState, checkAchievements } from "@/lib/achievements";
 import { initialXPState, addXP, calculateTokenXP } from "@/lib/xp";
 import type { AutoworkConfig, AutoworkPolicy, DashboardConfig } from "@/lib/types";
@@ -59,7 +59,7 @@ export default function DashboardPage() {
     sendGlobalChat,
     restartSession,
     loadChatHistory,
-  } = useAgents(config.demoMode);
+  } = useSharedAgents();
 
   const openAgent = chatAgent ? agents.find((agent) => agent.id === chatAgent) : null;
   const ownerConfig = config.owner;

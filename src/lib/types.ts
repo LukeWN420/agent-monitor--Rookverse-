@@ -292,6 +292,22 @@ export interface ActivityEvent {
   type: 'state_change' | 'task_start' | 'task_complete' | 'task_fail' | 'tool_call' | 'message' | 'error' | 'system';
   message: string;
   timestamp: number;
+  /**
+   * For `tool_call` events: which side of the tool's lifecycle this event
+   * marks. `start` = first time we saw this tool name; `complete` = the
+   * agent moved off the tool cleanly; `fail` = the tool errored before
+   * completing. Older events may omit this — render those as `start` for
+   * back-compat.
+   */
+  phase?: 'start' | 'complete' | 'fail';
+  /** Tool identifier (`web_search`, `read_file`, etc). */
+  toolName?: string;
+  /** The gateway-reported phase string (`running`, `pre`, `post`...). */
+  toolPhase?: string;
+  /** Wall-clock time the tool was active, in ms. Set on `complete`/`fail`. */
+  durationMs?: number;
+  /** Human-readable failure reason. Set on `fail`. */
+  errorReason?: string;
 }
 
 export type ChatScope = 'direct' | 'broadcast' | 'history';

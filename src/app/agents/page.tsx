@@ -18,8 +18,12 @@ export default function AgentsPage() {
   const [agents, setAgents] = useState<RegisteredAgent[]>([]);
   const [loading, setLoading] = useState(true);
   const [registrationCode, setRegistrationCode] = useState('');
+  // `window.location.origin` cannot be evaluated during SSR. Render a
+  // placeholder until the component mounts in the browser, then populate.
+  const [origin, setOrigin] = useState('https://your-dashboard');
 
   useEffect(() => {
+    setOrigin(window.location.origin);
     loadAgents();
     const interval = setInterval(loadAgents, 5000); // Refresh every 5 seconds
     return () => clearInterval(interval);
@@ -58,7 +62,7 @@ export default function AgentsPage() {
   };
 
   const copyRegistrationCode = () => {
-    const code = `const sdk = new RemoteAgentSDK('${window.location.origin}');
+    const code = `const sdk = new RemoteAgentSDK('${origin}');
 await sdk.register({
   agentName: 'MyAgent',
   computerName: 'MyComputer',
@@ -104,7 +108,7 @@ await sdk.register({
               <pre className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg p-4 overflow-x-auto text-xs font-mono text-[var(--text-primary)]">
 {`import { RemoteAgentSDK } from '@/lib/remote-agent-sdk';
 
-const sdk = new RemoteAgentSDK('${window.location.origin}');
+const sdk = new RemoteAgentSDK('${origin}');
 
 await sdk.register({
   agentName: 'MyAgent',
