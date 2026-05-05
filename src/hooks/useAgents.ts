@@ -289,16 +289,50 @@ function buildSessionLog(sess: GatewaySessionInfo): string[] {
   return log.filter(Boolean);
 }
 
+/**
+ * djb2-ish string hash. Used to pick a deterministic avatar/color slot for
+ * Symphony-managed agents from their `symphonyId`, so Wren and Mirren get
+ * different visuals across reloads but Wren always looks like Wren.
+ */
+function hashString(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) - h + s.charCodeAt(i)) | 0;
+  return Math.abs(h);
+}
+
 function sessionToAgentConfig(sess: GatewaySessionInfo, index: number): AgentConfig {
   const isMain = !sess.isSubagent;
+  // Symphony-managed identity: each `agent:*:explicit:<sym-id>` is its own
+  // agent (Wren, Pathfinder, etc.). Without this branch they all collapse
+  // to ♜ + gold + glasses because they share `isSubagent: false`.
+  const isSymphonyExplicit = !!sess.symphonyId;
+  // Decorrelated slot picks. Symphony ids share long prefixes
+  // (`sym-manual-1777621...`) so a single hash mod-N tends to collide; by
+  // salting each picker we make it likely that even if Wren and Mirren
+  // share an emoji, they diverge on color or avatar.
+  const symId = sess.symphonyId ?? '';
+  const emojiSlot = isSymphonyExplicit ? hashString(`${symId}|e`) : index;
+  const colorSlot = isSymphonyExplicit ? hashString(`${symId}|c`) : index;
+  const avatarSlot = isSymphonyExplicit ? hashString(`${symId}|a`) : index;
+
   return {
     id: sess.id,
     name: sess.name,
-    // Rookverse default for the primary session: ♜ + gold. Sessions that
-    // self-identify with their own emoji/color (sess.emoji) keep theirs.
-    emoji: sess.emoji ?? (isMain ? '♜' : AGENT_EMOJIS[index % AGENT_EMOJIS.length]),
-    color: isMain ? '#D4A843' : AGENT_COLORS[index % AGENT_COLORS.length],
-    avatar: isMain ? 'glasses' : AGENT_AVATARS[index % AGENT_AVATARS.length],
+    // Sessions that self-identify with their own emoji (sess.emoji) keep
+    // theirs. Otherwise: Rookverse default ♜+gold for the operator's main
+    // session; deterministic slot for Symphony explicits; index-based slot
+    // for subagents.
+    emoji: sess.emoji ?? (
+      isSymphonyExplicit ? AGENT_EMOJIS[emojiSlot % AGENT_EMOJIS.length]
+      : isMain ? '♜'
+      : AGENT_EMOJIS[index % AGENT_EMOJIS.length]
+    ),
+    color: isSymphonyExplicit
+      ? AGENT_COLORS[colorSlot % AGENT_COLORS.length]
+      : isMain ? '#D4A843' : AGENT_COLORS[index % AGENT_COLORS.length],
+    avatar: isSymphonyExplicit
+      ? AGENT_AVATARS[avatarSlot % AGENT_AVATARS.length]
+      : isMain ? 'glasses' : AGENT_AVATARS[index % AGENT_AVATARS.length],
     model: sess.model,
     modelProvider: sess.modelProvider ?? undefined,
     channel: sess.channel,

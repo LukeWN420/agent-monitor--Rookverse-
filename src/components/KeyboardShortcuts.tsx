@@ -75,7 +75,7 @@ export function KeyboardShortcuts({ isOpen, onClose, onShortcut }: KeyboardShort
   if (!isOpen && !showShortcuts) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 bg-[#0B1020]/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl max-w-2xl w-full max-h-[80vh] overflow-hidden">
         {/* Header */}
         <div className="p-4 border-b border-[var(--border)] flex justify-between items-center">

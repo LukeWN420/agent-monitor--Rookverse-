@@ -22,6 +22,11 @@ const DEFAULT_INTERVAL_MS = 10 * 60 * 1000;
 const TICK_INTERVAL_MS = 15 * 1000;
 const MIN_GAP_MS = 30 * 1000;
 const DEFAULT_MAX_SENDS = 2;
+// Exponential backoff cap when the gateway is failing. After this many
+// failed ticks in a row we stop doubling the gap and just retry at the
+// cap until something works. 5 min keeps the dashboard recoverable
+// without hammering a wedged gateway.
+const MAX_BACKOFF_MS = 5 * 60 * 1000;
 const DEFAULT_DIRECTIVE =
   'Check your memory and recent context, then continue the highest-impact task for your role. ' +
   'Do real work now: open files, write code, run commands, verify results, and move the task forward. ' +
@@ -30,7 +35,16 @@ const DEFAULT_DIRECTIVE =
 const AUTOWORK_SYMBOL = Symbol.for('__agent_monitor_autowork_ticker');
 
 interface GlobalAutoworkState {
-  timer: ReturnType<typeof setInterval> | null;
+  timer: ReturnType<typeof setTimeout> | null;
+  /**
+   * Count of consecutive ticks that errored or returned `ok: false`. Drives
+   * the exponential-backoff schedule below. Reset to 0 on any successful
+   * tick. Without this counter, a slow gateway produces a continuous stream
+   * of timed-out `sessions.list` requests that exhaust the dev server's
+   * event loop — the failure mode that took the dashboard down on
+   * 2026-05-02.
+   */
+  consecutiveFailures: number;
 }
 
 interface AutoworkTarget {
@@ -53,10 +67,34 @@ export interface AutoworkTickResult {
 function getGlobalState(): GlobalAutoworkState {
   const store = globalThis as Record<symbol, unknown>;
   const existing = store[AUTOWORK_SYMBOL] as GlobalAutoworkState | undefined;
-  if (existing) return existing;
-  const created: GlobalAutoworkState = { timer: null };
+  if (existing) {
+    // Migration: an older build used setInterval and didn't track failures.
+    // Heal the shape on first read so we don't crash on `consecutiveFailures`.
+    if (typeof existing.consecutiveFailures !== 'number') {
+      existing.consecutiveFailures = 0;
+    }
+    return existing;
+  }
+  const created: GlobalAutoworkState = { timer: null, consecutiveFailures: 0 };
   store[AUTOWORK_SYMBOL] = created;
   return created;
+}
+
+/**
+ * Backoff curve for the autowork ticker. With base 15s and cap 5min:
+ *   0 fails -> 15s   (steady state)
+ *   1 fail  -> 30s
+ *   2 fails -> 60s
+ *   3 fails -> 120s
+ *   4 fails -> 240s
+ *   5+ fails -> 300s (capped)
+ *
+ * Exported so the test suite can assert the schedule directly.
+ */
+export function autoworkBackoffMs(consecutiveFailures: number): number {
+  if (consecutiveFailures <= 0) return TICK_INTERVAL_MS;
+  const delay = TICK_INTERVAL_MS * 2 ** consecutiveFailures;
+  return Math.min(delay, MAX_BACKOFF_MS);
 }
 
 function ensureStatusDir(): void {
@@ -200,15 +238,72 @@ export async function listAutoworkTargets(): Promise<AutoworkTarget[]> {
   return Array.from(deduped.values()).sort((a, b) => a.name.localeCompare(b.name));
 }
 
-export function ensureAutoworkTicker(): void {
+/**
+ * Arm the autowork ticker. Idempotent — calling more than once does
+ * nothing. Production callers pass no arguments; the test suite injects
+ * a stub `tickFn` since vitest cannot mock intra-module references.
+ */
+export function ensureAutoworkTicker(
+  tickFn: () => Promise<AutoworkTickResult> = runAutoworkTick,
+): void {
   const state = getGlobalState();
   if (state.timer) return;
 
-  state.timer = setInterval(() => {
-    void runAutoworkTick().catch((err) => {
-      console.error('[autowork] Tick failed:', err);
-    });
-  }, TICK_INTERVAL_MS);
+  const scheduleNext = (): void => {
+    const delay = autoworkBackoffMs(state.consecutiveFailures);
+    if (state.consecutiveFailures > 0 && state.consecutiveFailures % 4 === 0) {
+      // Surface the back-off so a long gateway outage isn't silent. We
+      // deliberately don't log every failure — that's what produced
+      // hundreds of identical "Tick failed" lines per hour pre-fix.
+      console.warn(
+        `[autowork] backing off after ${state.consecutiveFailures} consecutive failures; next tick in ${Math.round(delay / 1000)}s`,
+      );
+    }
+    state.timer = setTimeout(tick, delay);
+  };
+
+  const tick = (): void => {
+    void tickFn()
+      .then((result) => {
+        if (result.ok) {
+          if (state.consecutiveFailures > 0) {
+            console.info(
+              `[autowork] recovered after ${state.consecutiveFailures} failed ticks`,
+            );
+          }
+          state.consecutiveFailures = 0;
+        } else {
+          state.consecutiveFailures += 1;
+        }
+      })
+      .catch((err) => {
+        // Listing targets failed (typically `sessions.list` timeout).
+        // Count as a failure and back off; do NOT spam the log on every
+        // tick — see the avalanche from 2026-05-02.
+        if (state.consecutiveFailures === 0) {
+          console.error('[autowork] Tick failed:', err);
+        }
+        state.consecutiveFailures += 1;
+      })
+      .finally(scheduleNext);
+  };
+
+  // First tick fires at the steady-state interval so a fresh boot doesn't
+  // race the gateway's own startup window.
+  state.timer = setTimeout(tick, TICK_INTERVAL_MS);
+}
+
+/**
+ * Test-only helper: clear the global ticker state. Production code never
+ * calls this; tests use it to ensure isolation between cases.
+ */
+export function __resetAutoworkTickerForTests(): void {
+  const state = getGlobalState();
+  if (state.timer) {
+    clearTimeout(state.timer);
+    state.timer = null;
+  }
+  state.consecutiveFailures = 0;
 }
 
 export async function runAutoworkTick(forceSessionKey?: string): Promise<AutoworkTickResult> {

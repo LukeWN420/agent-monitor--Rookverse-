@@ -23,7 +23,7 @@ function createWindow() {
   });
 
   // Wait for the dev server to be ready, then load
-  const targetURL = 'http://localhost:3200';
+  const targetURL = 'http://localhost:3000';
   
   mainWindow.loadURL(targetURL).catch(err => {
     console.error('Failed to load:', err);
@@ -32,7 +32,7 @@ function createWindow() {
       <html>
       <body style="background:#0B1020;color:#D4A843;font-family:monospace;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;flex-direction:column;">
       <h1>♜ Rookverse</h1>
-      <p>Could not connect to Agent Monitor on port 3200</p>
+      <p>Could not connect to Agent Monitor on port 3000</p>
       <p>Make sure the dev server is running: <code>npm run dev</code></p>
       <button onclick="location.reload()" style="margin-top:20px;padding:8px 16px;background:#D4A843;color:#0B1020;border:none;cursor:pointer;font-family:monospace;">Retry</button>
       </body>

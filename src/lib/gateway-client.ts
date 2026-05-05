@@ -47,6 +47,13 @@ export interface GatewaySessionInfo {
   lastRunId?: string | null;
   isActive: boolean;
   isSubagent: boolean;
+  /**
+   * Set when the session is a Symphony-managed explicit identity
+   * (`agent:*:explicit:<id>`). Lets the dashboard pick a deterministic
+   * per-Symphony-agent color/avatar rather than collapsing all explicit
+   * sessions to the operator's main appearance.
+   */
+  symphonyId?: string | null;
   lastActivity: number;
   updatedAt: number;
   aborted: boolean;

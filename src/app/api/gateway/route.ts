@@ -22,6 +22,7 @@ import {
   isActiveBehavior,
   summarizeExecution,
 } from '@/lib/state-mapper';
+import { fetchSessions as fetchSymphonySessions, type SymphonySession } from '@/lib/symphony';
 
 /** Read bot name from IDENTITY.md **Name:** field */
 function readBotName(): string | null {
@@ -36,13 +37,35 @@ function readBotName(): string | null {
   }
 }
 
-function canonicalSessionLookupKey(key: string): string {
+/**
+ * Group key used to dedupe sessions that represent the same logical agent
+ * identity. `agent:main:main` and `agent:main:discord:direct:...` ARE the
+ * same identity (Rook on different channels), so they collapse to
+ * `agent:main`. Subagents and Symphony-managed `:explicit:` sessions are
+ * distinct identities and must NOT collapse — that's what was hiding
+ * Wren/Pathfinder/Mirren behind a single "Main" entry.
+ *
+ * Exported so the test suite can pin the dedup contract.
+ */
+export function canonicalSessionLookupKey(key: string): string {
   if (key.includes('subagent')) return key;
+  if (key.includes(':explicit:')) return key;
   const parts = key.split(':');
   if (parts[0] === 'agent' && parts[1]) {
     return parts.slice(0, 2).join(':');
   }
   return key;
+}
+
+/**
+ * Pull the Symphony-side id out of a gateway session key.
+ * `agent:main:explicit:sym-manual-1234` -> `sym-manual-1234`
+ * Returns null for non-explicit keys.
+ */
+export function extractExplicitId(key: string): string | null {
+  const marker = ':explicit:';
+  const idx = key.indexOf(marker);
+  return idx >= 0 ? key.slice(idx + marker.length) : null;
 }
 
 function inferParentSessionKey(key: string): string | null {
@@ -76,6 +99,21 @@ export async function GET() {
     // Get known agents for display names / emoji
     const knownAgents = gw.getAgents();
 
+    // Pull Symphony's persistent-session registry as a best-effort overlay so
+    // explicit sessions (`agent:*:explicit:sym-*`) surface with their named
+    // identities (Wren, Pathfinder, etc.) instead of all collapsing to the
+    // operator's main agent. If Symphony is unreachable we just skip the
+    // overlay — gateway data still flows.
+    const symphonyByExplicitId = new Map<string, SymphonySession>();
+    try {
+      const sym = await fetchSymphonySessions();
+      for (const s of sym.sessions ?? []) {
+        if (s.symphony_id) symphonyByExplicitId.set(s.symphony_id, s);
+      }
+    } catch {
+      // Symphony down — proceed without overlay.
+    }
+
     const sessions = (result.sessions ?? []).map((s) => {
       const isSubagent = s.key.includes('subagent');
 
@@ -91,8 +129,26 @@ export async function GET() {
       const agentId = (keyParts[0] === 'agent' && keyParts[1]) ? keyParts[1] : 'main';
       const agentInfo = liveState?.agent ?? knownAgents.get(agentId);
 
+      // Symphony overlay — if this is an explicit session and Symphony has
+      // a name/emoji for it, those take precedence over the agent map's
+      // generic identity (which would otherwise tag every Wren / Mirren /
+      // Pathfinder as plain "Main" + ♜).
+      const explicitId = extractExplicitId(s.key);
+      const symphonyOverlay = explicitId ? symphonyByExplicitId.get(explicitId) : null;
+
       let agentName: string;
-      if (agentInfo?.identity?.name ?? agentInfo?.name) {
+      let resolvedEmoji: string | undefined = agentInfo?.identity?.emoji;
+      if (symphonyOverlay?.name) {
+        agentName = symphonyOverlay.name;
+        // Only overlay Symphony's emoji if it's a genuinely-chosen one.
+        // Symphony stamps '♜' on every dispatch by default; treating that
+        // as a real emoji would make Wren / Mirren / Health-Watcher all
+        // render as the operator's rook again. Anything else (🐦, 🪞,
+        // custom-set per dispatch) wins.
+        if (symphonyOverlay.emoji && symphonyOverlay.emoji !== '♜') {
+          resolvedEmoji = symphonyOverlay.emoji;
+        }
+      } else if (agentInfo?.identity?.name ?? agentInfo?.name) {
         agentName = (agentInfo.identity?.name ?? agentInfo.name)!;
       } else if (isSubagent) {
         const subId = keyParts[keyParts.length - 1] ?? '';
@@ -105,7 +161,11 @@ export async function GET() {
         id: s.sessionId ?? s.key,
         key: s.key,
         name: agentName,
-        emoji: agentInfo?.identity?.emoji,
+        emoji: resolvedEmoji,
+        // Surface the explicit-session id so the client can derive a
+        // deterministic per-Symphony-agent color/avatar without re-parsing
+        // the session key. Null for non-explicit sessions.
+        symphonyId: explicitId,
         modelProvider: s.modelProvider ?? null,
         model: s.model ?? 'unknown',
         inputTokens: s.inputTokens ?? 0,

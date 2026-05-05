@@ -4,12 +4,14 @@
 
 'use client';
 
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import type { AgentConfig, AgentDashboardState, OwnerConfig, ThemeName } from '@/lib/types';
 import { useSharedAgents, useSharedOffice } from '@/lib/AgentsProvider';
 import OfficeCanvasInner from './OfficeCanvas';
 import OfficeControls from '@/components/office/OfficeControls';
+import OfficeMiniMap from '@/components/office/OfficeMiniMap';
 import ChatWindow from '@/components/chat/ChatWindow';
+import { generateOffice } from '@/office/generator';
 
 interface MiniOfficeProps {
   agents: AgentConfig[];
@@ -24,6 +26,15 @@ export default function MiniOffice({ agents, agentStates, ownerConfig, theme }: 
   const [expanded, setExpanded] = useState(false);
   const [chatAgent, setChatAgent] = useState<string | null>(null);
   const backdropRef = useRef<HTMLDivElement>(null);
+
+  // Mini-map data — derived from the same procedural generator the office
+  // engine uses, so the overlay rectangles match the canvas zones exactly.
+  // Memoized on `agents.length` (the only input that changes zone count
+  // for v1) to keep re-renders cheap during ticks.
+  const generatedOffice = useMemo(
+    () => generateOffice(agents.length),
+    [agents.length],
+  );
 
   // Close on Escape key
   useEffect(() => {
@@ -111,15 +122,22 @@ export default function MiniOffice({ agents, agentStates, ownerConfig, theme }: 
               </button>
             </div>
 
-            {/* Canvas */}
-            <OfficeCanvasInner
-              officeState={officeState}
-              agents={agents}
-              owner={ownerConfig}
-              onTick={tick}
-              width={1100}
-              height={620}
-            />
+            {/* Canvas + mini-map overlay */}
+            <div className="relative">
+              <OfficeCanvasInner
+                officeState={officeState}
+                agents={agents}
+                owner={ownerConfig}
+                onTick={tick}
+                width={1100}
+                height={620}
+              />
+              <OfficeMiniMap
+                office={generatedOffice}
+                agents={agents}
+                runtimes={officeState.agents}
+              />
+            </div>
 
             {/* Controls */}
             <OfficeControls

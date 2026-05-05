@@ -126,10 +126,16 @@ export function useOffice(
       const newBubbles = prev.bubbles.map(b => ({ ...b, ttl: b.ttl - 1 })).filter(b => b.ttl > 0);
       const newParticles = tickParticles(prev.particles);
 
-      // Pre-compute agent index map once per tick — the previous loop did
-      // O(n²) lookups inside the per-agent loop just to stagger particles.
+      // Pre-compute agent index + identity map once per tick — the previous
+      // loop did O(n²) lookups inside the per-agent loop just to stagger
+      // particles. Identity lookup is needed for per-agent bubble emoji
+      // (post-Symphony-overlay each agent has its own visual identity).
       const agentIndexById: Record<string, number> = {};
-      for (let i = 0; i < agents.length; i++) agentIndexById[agents[i].id] = i;
+      const agentById: Record<string, AgentConfig> = {};
+      for (let i = 0; i < agents.length; i++) {
+        agentIndexById[agents[i].id] = i;
+        agentById[agents[i].id] = agents[i];
+      }
 
       for (const runtime of prev.agents) {
         const dashState = agentStates[runtime.id];
@@ -275,16 +281,54 @@ export function useOffice(
             }
           }
 
-          // Bubble — every ~30s, staggered per agent.
-          if (mapping.bubble && newTick % 900 === (agentIndex * 73) % 900) {
-            const sp = gridToScreen(updated.pos);
-            newBubbles.push({
-              text: mapping.bubble,
-              ttl: 120,
-              x: sp.x,
-              y: sp.y - 40,
-            });
+          // Bubble triggers — two paths:
+          //   (a) IMMEDIATE on behavior transition into an active state
+          //       (idle → working/thinking/researching/etc). This is the
+          //       load-bearing fix for "I broadcast and don't see anyone
+          //       respond" — a turn finishes in 5-10s, so the old 30s
+          //       cadence usually missed it entirely.
+          //   (b) AMBIENT cadence every ~30s (staggered) so a long-running
+          //       agent still produces texture between transitions.
+          //
+          // Per-agent emoji is pulled from the AgentConfig so each
+          // Symphony-overlaid identity (Wren, Mirren, Health-Watcher...)
+          // has a recognisable bubble instead of all being ♜.
+          const isActiveBehaviorNow =
+            behavior === 'working'
+            || behavior === 'thinking'
+            || behavior === 'debugging'
+            || behavior === 'researching'
+            || behavior === 'meeting'
+            || behavior === 'deploying';
+          const justBecameActive =
+            isActiveBehaviorNow && updated.lastBehaviorSeen !== behavior;
+          const cadenceFires = newTick % 900 === (agentIndex * 73) % 900;
+
+          if (justBecameActive || cadenceFires) {
+            const dashState = agentStates[runtime.id];
+            const agentEmoji = agentById[runtime.id]?.emoji ?? '♜';
+            // Prefer live, agent-specific text. statusSummary is the
+            // gateway's best human-readable description ("Reading 3 files",
+            // "Streaming response"). toolName is a narrower fallback.
+            const liveText = dashState?.statusSummary
+              ?? dashState?.toolName
+              ?? (dashState?.chatStatus === 'delta' ? 'Responding...' : null);
+            const bubbleText = liveText
+              ? `${agentEmoji} ${liveText}`
+              : mapping.bubble;
+            if (bubbleText) {
+              const sp = gridToScreen(updated.pos);
+              newBubbles.push({
+                text: bubbleText,
+                // Hold transition bubbles longer so the user actually
+                // catches who started working.
+                ttl: justBecameActive ? 180 : 120,
+                x: sp.x,
+                y: sp.y - 40,
+              });
+            }
           }
+          updated.lastBehaviorSeen = behavior;
         }
 
         updated.currentState = behavior === 'working' || behavior === 'debugging' ? 'working' :

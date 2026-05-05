@@ -17,15 +17,15 @@ export default function LevelUpNotification({ oldLevel, newLevel, title, badge, 
   }, [onClose]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 animate-fade-in">
-      <div className="relative bg-gradient-to-br from-purple-900 via-blue-900 to-purple-900 rounded-3xl p-12 shadow-2xl max-w-lg mx-4 animate-scale-in">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0B1020]/70 animate-fade-in">
+      <div className="relative bg-gradient-to-br from-[#0B1020] via-[#1A1A2E] to-[#0B1020] rounded-3xl p-12 shadow-2xl max-w-lg mx-4 animate-scale-in">
         {/* Glow effect */}
         <div className="absolute inset-0 rounded-3xl bg-gradient-to-r from-yellow-400 via-purple-500 to-blue-500 opacity-50 blur-xl animate-pulse" />
         
         {/* Content */}
         <div className="relative text-center">
           {/* Badge */}
-          <div className="text-8xl mb-6 animate-bounce">
+          <div className="text-8xl mb-6 animate-fade-up">
             {badge}
           </div>
           
@@ -45,12 +45,12 @@ export default function LevelUpNotification({ oldLevel, newLevel, title, badge, 
           </div>
           
           {/* Title */}
-          <div className="text-purple-300 font-bold text-2xl mb-6">
+          <div className="text-[#D4A843] font-bold text-2xl mb-6">
             {title}
           </div>
           
           {/* XP Bar */}
-          <div className="bg-black/50 rounded-full h-4 mb-6 overflow-hidden">
+          <div className="bg-[#0B1020]/50 rounded-full h-4 mb-6 overflow-hidden">
             <div className="bg-gradient-to-r from-yellow-400 via-purple-500 to-blue-500 h-full animate-fill" />
           </div>
           

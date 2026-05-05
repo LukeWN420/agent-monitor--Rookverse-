@@ -19,9 +19,9 @@ interface LeaderboardProps {
 
 export default function Leaderboard({ entries, title, icon }: LeaderboardProps) {
   const getRankStyle = (rank: number) => {
-    if (rank === 1) return 'bg-gradient-to-r from-yellow-500/20 to-transparent border-l-4 border-yellow-500';
-    if (rank === 2) return 'bg-gradient-to-r from-gray-400/20 to-transparent border-l-4 border-gray-400';
-    if (rank === 3) return 'bg-gradient-to-r from-orange-500/20 to-transparent border-l-4 border-orange-500';
+    if (rank === 1) return 'bg-gradient-to-r from-yellow-500/20 to-transparent border-l-2 border-[#D4A843]/30';
+    if (rank === 2) return 'bg-gradient-to-r from-gray-400/20 to-transparent border-l-2 border-[#D4A843]/30';
+    if (rank === 3) return 'bg-gradient-to-r from-orange-500/20 to-transparent border-l-2 border-[#D4A843]/30';
     return '';
   };
 

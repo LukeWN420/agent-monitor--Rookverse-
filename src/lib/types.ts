@@ -258,6 +258,13 @@ export interface AgentRuntime {
    */
   nextLookAroundTick?: number;
   lookingAroundUntil?: number;
+  /**
+   * Last behavior we observed for this agent. Used to detect transitions
+   * (e.g. idle → working) so the office can fire a bubble + particle
+   * burst immediately when an agent starts a turn, instead of waiting
+   * for the 30s ambient cadence to roll around.
+   */
+  lastBehaviorSeen?: AgentBehavior;
 }
 
 export interface OwnerRuntime {
