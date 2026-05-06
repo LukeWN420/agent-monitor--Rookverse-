@@ -4,8 +4,6 @@
 // 1. Look up the persistent session's `session_key` by `symphony_id` in the
 //    Symphony registry (via `GET /sessions`).
 // 2. Forward the message to the gateway via this app's existing
-//    `/api/gateway/action { action: 'send', sessionKey, message }` route,
-//    which already authenticates against OpenClaw via the persistent
 //    `getGatewayConnection()` singleton.
 //
 // Async-dispatch caveat: Symphony's dispatch is synchronous in v0.2 (the
@@ -15,11 +13,18 @@
 // been registered yet (race, or registry not flushed), we return **202
 // Accepted** with `{ retry_after_ms }` so the client can back off and
 // retry instead of receiving a hard 404.
+//
+// Rate-limited: 30 messages per minute per client.
+// session_key bypass requires X-Internal header (server-to-server only).
 // ============================================================================
 
 import { NextResponse } from 'next/server';
 import { fetchSessions, SymphonyError } from '@/lib/symphony';
 import { getGatewayConnection, readOpenClawConfig } from '@/lib/gateway-connection';
+import { checkRateLimit, clientIp } from '@/lib/rate-limit';
+
+const MESSAGE_LIMIT = 30;
+const MESSAGE_WINDOW = 60_000;
 
 export const dynamic = 'force-dynamic';
 
@@ -28,8 +33,10 @@ interface MessageBody {
   /** Alias accepted in case callers used the API spec's camelCase. */
   symphonyId?: string;
   /**
-   * Direct session_key bypass — if the caller already knows the key (for
-   * example after a dispatch call's response), skip the registry lookup.
+   * Direct session_key bypass — reserved for internal (server-to-server)
+   * calls. Requires X-Internal: true header to prevent unauthenticated
+   * callers from sending messages to arbitrary sessions. External callers
+   * must resolve via symphony_id instead.
    */
   session_key?: string;
   sessionKey?: string;
@@ -37,6 +44,15 @@ interface MessageBody {
 }
 
 export async function POST(request: Request) {
+  const ip = clientIp(request);
+  const rl = checkRateLimit(`message:${ip}`, MESSAGE_LIMIT, MESSAGE_WINDOW);
+  if (!rl.allowed) {
+    return NextResponse.json(
+      { ok: false, error: 'rate limit exceeded', retry_after_ms: rl.resetAt - Date.now() },
+      { status: 429 },
+    );
+  }
+
   let body: MessageBody;
   try {
     body = (await request.json()) as MessageBody;
@@ -57,6 +73,17 @@ export async function POST(request: Request) {
 
   const symphonyId = body.symphony_id || body.symphonyId;
   let sessionKey = body.session_key || body.sessionKey || null;
+
+  // session_key bypass is for internal server-to-server calls only.
+  // External callers must resolve via symphony_id to avoid sending
+  // messages to arbitrary sessions.
+  const isInternal = request.headers.get('x-internal') === 'true';
+  if (sessionKey && !isInternal) {
+    return NextResponse.json(
+      { ok: false, error: 'Direct session_key requires X-Internal header. Use symphony_id instead.' },
+      { status: 403 },
+    );
+  }
 
   // If the caller supplied only the symphony_id, look up the session_key
   // from Symphony's registry. If neither is present, we can't proceed.
@@ -98,10 +125,7 @@ export async function POST(request: Request) {
     }
   }
 
-  // Now route through the gateway via the same path the rest of the
-  // dashboard uses. Don't HTTP-call our own /api/gateway/action — that
-  // round-trips through the Next.js handler for no benefit. Use the
-  // shared connection singleton directly.
+  // Route through the gateway via the shared connection singleton.
   const config = readOpenClawConfig();
   if (!config) {
     return NextResponse.json(

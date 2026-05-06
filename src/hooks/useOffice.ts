@@ -123,6 +123,8 @@ export function useOffice(
     setOfficeState(prev => {
       const newTick = prev.tick + 1;
       const newAgents: AgentRuntime[] = [];
+      // Decay TTL on existing bubbles. We also update their text later
+      // (per-agent) so bubbles stay fresh instead of showing stale status.
       const newBubbles = prev.bubbles.map(b => ({ ...b, ttl: b.ttl - 1 })).filter(b => b.ttl > 0);
       const newParticles = tickParticles(prev.particles);
 
@@ -304,21 +306,48 @@ export function useOffice(
             isActiveBehaviorNow && updated.lastBehaviorSeen !== behavior;
           const cadenceFires = newTick % 900 === (agentIndex * 73) % 900;
 
-          if (justBecameActive || cadenceFires) {
-            const dashState = agentStates[runtime.id];
-            const agentEmoji = agentById[runtime.id]?.emoji ?? '♜';
-            // Prefer live, agent-specific text. statusSummary is the
-            // gateway's best human-readable description ("Reading 3 files",
-            // "Streaming response"). toolName is a narrower fallback.
-            const liveText = dashState?.statusSummary
-              ?? dashState?.toolName
-              ?? (dashState?.chatStatus === 'delta' ? 'Responding...' : null);
-            const bubbleText = liveText
-              ? `${agentEmoji} ${liveText}`
-              : mapping.bubble;
+          const dashState = agentStates[runtime.id];
+          const agentEmoji = agentById[runtime.id]?.emoji ?? '♜';
+          // Prefer live, agent-specific text. statusSummary is the
+          // gateway's best human-readable description ("Reading 3 files",
+          // "Streaming response"). toolName is a narrower fallback.
+          const liveText = dashState?.statusSummary
+            ?? dashState?.toolName
+            ?? (dashState?.chatStatus === 'delta' ? 'Responding...' : null);
+          const bubbleText = liveText
+            ? `${agentEmoji} ${liveText}`
+            : mapping.bubble;
+
+          // Update existing bubble text for this agent if status changed.
+          // Previously bubbles were frozen once spawned — now they
+          // reflect live state until they expire.
+          const existingBubbleIdx = newBubbles.findIndex(
+            b => b.agentId === runtime.id,
+          );
+          if (existingBubbleIdx >= 0) {
+            // Agent already has a bubble — update its text in-place.
+            if (bubbleText) {
+              newBubbles[existingBubbleIdx] = {
+                ...newBubbles[existingBubbleIdx],
+                text: bubbleText,
+                x: gridToScreen(updated.pos).x,
+                y: gridToScreen(updated.pos).y - 40,
+              };
+            }
+            // On behavior transition, refresh TTL so the new state
+            // gets a full bubble lifetime.
+            if (justBecameActive) {
+              newBubbles[existingBubbleIdx] = {
+                ...newBubbles[existingBubbleIdx],
+                ttl: 180,
+              };
+            }
+          } else if (justBecameActive || cadenceFires) {
+            // No existing bubble — spawn one.
             if (bubbleText) {
               const sp = gridToScreen(updated.pos);
               newBubbles.push({
+                agentId: runtime.id,
                 text: bubbleText,
                 // Hold transition bubbles longer so the user actually
                 // catches who started working.

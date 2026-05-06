@@ -4,11 +4,18 @@
 // Broadcasts a message to all persistent sessions registered with Symphony.
 // Each session receives the message and decides (prompt-level) whether to
 // respond. Optional `channel` may be supplied for future channel filtering.
+//
+// Rate-limited: 3 broadcasts per minute per client (high-impact operation).
 // ============================================================================
 
 import { NextResponse } from 'next/server';
 import { fetchSessions, SymphonyError } from '@/lib/symphony';
 import { getGatewayConnection, readOpenClawConfig } from '@/lib/gateway-connection';
+import { checkRateLimit, clientIp } from '@/lib/rate-limit';
+
+/** Rate limit: 3 broadcasts per minute per client. Broadcast is high-impact. */
+const BROADCAST_LIMIT = 3;
+const BROADCAST_WINDOW = 60_000;
 
 export const dynamic = 'force-dynamic';
 
@@ -18,6 +25,15 @@ interface Body {
 }
 
 export async function POST(request: Request) {
+  const ip = clientIp(request);
+  const rl = checkRateLimit(`broadcast:${ip}`, BROADCAST_LIMIT, BROADCAST_WINDOW);
+  if (!rl.allowed) {
+    return NextResponse.json(
+      { ok: false, error: 'rate limit exceeded', retry_after_ms: rl.resetAt - Date.now() },
+      { status: 429 },
+    );
+  }
+
   let body: Body;
   try {
     body = (await request.json()) as Body;
@@ -79,4 +95,3 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: 'gateway broadcast failed', detail: err instanceof Error ? err.message : String(err) }, { status: 502 });
   }
 }
-

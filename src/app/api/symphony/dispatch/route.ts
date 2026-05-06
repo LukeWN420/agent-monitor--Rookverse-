@@ -11,10 +11,24 @@
 
 import { NextResponse } from 'next/server';
 import { dispatchSession, SymphonyError, type SymphonyDispatchBody } from '@/lib/symphony';
+import { checkRateLimit, clientIp } from '@/lib/rate-limit';
+
+/** Rate limit: 10 dispatches per minute per client. */
+const DISPATCH_LIMIT = 10;
+const DISPATCH_WINDOW = 60_000;
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request) {
+  const ip = clientIp(request);
+  const rl = checkRateLimit(`dispatch:${ip}`, DISPATCH_LIMIT, DISPATCH_WINDOW);
+  if (!rl.allowed) {
+    return NextResponse.json(
+      { ok: false, error: 'rate limit exceeded', retry_after_ms: rl.resetAt - Date.now() },
+      { status: 429 },
+    );
+  }
+
   let body: SymphonyDispatchBody;
   try {
     body = (await request.json()) as SymphonyDispatchBody;

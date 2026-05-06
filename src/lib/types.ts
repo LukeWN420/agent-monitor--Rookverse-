@@ -187,6 +187,8 @@ export interface Bubble {
   ttl: number;
   x: number;
   y: number;
+  /** Agent ID this bubble belongs to (for in-place text updates). */
+  agentId?: string;
 }
 
 /** Effect particle */
