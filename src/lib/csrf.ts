@@ -22,6 +22,8 @@ export function validateCSRF(origin: string | null, referer: string | null): boo
   );
 }
 
-export function getCSRFToken(): string {
-  return process.env.CSRF_SECRET || 'dev-secret-token';
-}
+// CSRF token mechanism removed — origin/referer validation is the
+// active protection. A hardcoded fallback token provides no real security
+// and gives false confidence. If token-based CSRF is needed later,
+// implement it properly with per-session nonces.
+// See: REVIEW.md recommendation #6.

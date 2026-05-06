@@ -22,6 +22,12 @@ vi.mock('@/lib/gateway-connection', () => ({
   readOpenClawConfig: vi.fn(),
 }));
 
+// Rate limiter mock — always allow in tests
+vi.mock('@/lib/rate-limit', () => ({
+  checkRateLimit: vi.fn(() => ({ allowed: true, remaining: 99, resetAt: Date.now() + 60000 })),
+  clientIp: vi.fn(() => 'test-ip'),
+}));
+
 import { getGatewayConnection, readOpenClawConfig } from '@/lib/gateway-connection';
 
 const mockedGetGw = vi.mocked(getGatewayConnection);
@@ -50,10 +56,10 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
-function makeRequest(method: 'GET' | 'POST', body?: unknown): Request {
+function makeRequest(method: 'GET' | 'POST', body?: unknown, headers?: Record<string, string>): Request {
   return new Request('http://test.local/api/symphony', {
     method,
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', ...headers },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
 }
@@ -229,7 +235,7 @@ describe('POST /api/symphony/message', () => {
     mockedGetGw.mockReturnValue({ request: requestMock } as any);
 
     const res = await messagePOST(
-      makeRequest('POST', { session_key: 'agent:main:direct', message: 'hi' }),
+      makeRequest('POST', { session_key: 'agent:main:direct', message: 'hi' }, { 'x-internal': 'true' }),
     );
     expect(res.status).toBe(200);
     expect(fetchMock).not.toHaveBeenCalled(); // no registry lookup
@@ -249,7 +255,7 @@ describe('POST /api/symphony/message', () => {
   it('500 when OpenClaw config is missing', async () => {
     mockedReadCfg.mockReturnValueOnce(null as any);
     const res = await messagePOST(
-      makeRequest('POST', { session_key: 'agent:main:direct', message: 'hi' }),
+      makeRequest('POST', { session_key: 'agent:main:direct', message: 'hi' }, { 'x-internal': 'true' }),
     );
     expect(res.status).toBe(500);
   });
@@ -258,7 +264,7 @@ describe('POST /api/symphony/message', () => {
     const requestMock = vi.fn().mockRejectedValue(new Error('gw down'));
     mockedGetGw.mockReturnValue({ request: requestMock } as any);
     const res = await messagePOST(
-      makeRequest('POST', { session_key: 'agent:main:direct', message: 'hi' }),
+      makeRequest('POST', { session_key: 'agent:main:direct', message: 'hi' }, { 'x-internal': 'true' }),
     );
     expect(res.status).toBe(502);
     const body = await res.json();
@@ -269,10 +275,19 @@ describe('POST /api/symphony/message', () => {
     const requestMock = vi.fn().mockResolvedValue({ ok: true });
     mockedGetGw.mockReturnValue({ request: requestMock } as any);
     const res = await messagePOST(
-      makeRequest('POST', { sessionKey: 'agent:main:cc', message: 'hi' }),
+      makeRequest('POST', { sessionKey: 'agent:main:cc', message: 'hi' }, { 'x-internal': 'true' }),
     );
     expect(res.status).toBe(200);
     expect(requestMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('403 when session_key is used without X-Internal header', async () => {
+    const res = await messagePOST(
+      makeRequest('POST', { session_key: 'agent:main:direct', message: 'hi' }),
+    );
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.error).toMatch(/X-Internal/);
   });
 });
 
