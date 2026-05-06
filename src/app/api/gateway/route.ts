@@ -221,8 +221,27 @@ export async function GET() {
       // Group key: for "agent:main:main" -> "agent:main", for subagents keep full key
       const groupKey = sess.isSubagent ? sess.key : canonicalSessionLookupKey(sess.key);
       const existing = sessionMap.get(groupKey);
-      if (!existing || sess.totalTokens > existing.totalTokens || (sess.totalTokens === existing.totalTokens && (sess.lastActivity ?? 0) > (existing.lastActivity ?? 0))) {
+      if (!existing) {
         sessionMap.set(groupKey, sess);
+      } else {
+        // Prefer the session that is more recently active or currently active.
+        // Previously we preferred highest totalTokens, which could make an
+        // idle channel with more history shadow an active channel.
+        const existingActive = isActiveBehavior(
+          executionStateToBehavior(liveStates.get(existing.key), existing.aborted),
+        );
+        const sessActive = isActiveBehavior(sess.behavior);
+        if (sessActive && !existingActive) {
+          // Active always wins over idle.
+          sessionMap.set(groupKey, sess);
+        } else if (existingActive === sessActive) {
+          // Same activity level — break tie by recency, then tokens.
+          if ((sess.lastActivity ?? 0) > (existing.lastActivity ?? 0)
+            || (sess.lastActivity === existing.lastActivity && sess.totalTokens > existing.totalTokens)) {
+            sessionMap.set(groupKey, sess);
+          }
+        }
+        // If existing is active and sess is idle, keep existing.
       }
     }
     const dedupedSessions = Array.from(sessionMap.values());
